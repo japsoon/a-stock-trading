@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { stockAPI } from '../services/api';
+import { API_BASE_URL, stockAPI } from '../services/api';
 import type { Agent } from '../services/api';
 
 const AI_PROVIDERS = [
@@ -13,7 +13,7 @@ const AI_PROVIDERS = [
 ];
 
 export default function Settings() {
-  const [apiBaseURL, setApiBaseURL] = useState('http://127.0.0.1:5000');
+  const [apiBaseURL, setApiBaseURL] = useState(API_BASE_URL);
   const [selectedProvider, setSelectedProvider] = useState('openai');
   const [apiKey, setApiKey] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
@@ -30,7 +30,7 @@ export default function Settings() {
   const loadConfig = async () => {
     try {
       const url = await stockAPI.getConfig('api_base_url');
-      if (url) setApiBaseURL(url);
+      if (url) setApiBaseURL(url.trim().replace(/\/+$/, ''));
 
       const provider = await stockAPI.getConfig('default_ai_provider');
       if (provider) {
@@ -73,9 +73,11 @@ export default function Settings() {
     setSaving(true);
     setMessage('');
     try {
-      // 保存后端地址
-      await stockAPI.setConfig('api_base_url', apiBaseURL);
-      stockAPI.setBaseURL(apiBaseURL);
+      const targetApiBaseURL = apiBaseURL.trim().replace(/\/+$/, '');
+      if (!targetApiBaseURL || !/^https?:\/\//i.test(targetApiBaseURL)) {
+        throw new Error('后端地址格式错误，请使用 http:// 或 https:// 开头');
+      }
+      const currentApiBaseURL = stockAPI.getBaseURL().replace(/\/+$/, '');
 
       // 保存AI服务配置
       await stockAPI.setConfig('default_ai_provider', selectedProvider);
@@ -84,7 +86,26 @@ export default function Settings() {
         await stockAPI.setConfig(`${selectedProvider}_model`, selectedModel);
       }
 
-      setMessage('配置保存成功！');
+      // 保存后端地址（在所有配置保存完成后）
+      await stockAPI.setConfig('api_base_url', targetApiBaseURL);
+
+      // 最后再尝试切换当前前端请求地址，避免中途切断配置保存请求
+      if (targetApiBaseURL && targetApiBaseURL !== currentApiBaseURL) {
+        try {
+          const response = await fetch(`${targetApiBaseURL}/api/health`);
+          if (response.ok) {
+            stockAPI.setBaseURL(targetApiBaseURL);
+            setMessage('配置保存成功，已切换到新的后端地址！');
+          } else {
+            setMessage('配置已保存，但新后端地址不可用，当前仍使用旧地址。');
+          }
+        } catch {
+          setMessage('配置已保存，但新后端地址不可用，当前仍使用旧地址。');
+        }
+      } else {
+        setMessage('配置保存成功！');
+      }
+
       setTimeout(() => setMessage(''), 3000);
     } catch (error) {
       setMessage(`保存失败: ${(error as Error).message}`);
@@ -138,7 +159,7 @@ export default function Settings() {
               type="text"
               value={apiBaseURL}
               onChange={(e) => setApiBaseURL(e.target.value)}
-              placeholder="http://127.0.0.1:5000"
+              placeholder="http://127.0.0.1:5001"
               className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
             />
           </div>

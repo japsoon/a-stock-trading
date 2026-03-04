@@ -8,6 +8,7 @@ Flask API服务 - 股票数据查询接口
 from flask import Flask, jsonify
 from flask_cors import CORS
 import warnings
+import os
 
 warnings.filterwarnings('ignore')
 
@@ -35,9 +36,13 @@ register_routes()
 init_database()
 
 if __name__ == '__main__':
+    host = os.getenv('HOST', '0.0.0.0')
+    port = int(os.getenv('PORT', '5001'))
+    debug = os.getenv('FLASK_DEBUG', '0').lower() in ('1', 'true', 'yes')
+
     print("=" * 60)
     print("股票数据API服务启动")
     print("=" * 60)
-    print("访问 http://localhost:5000 查看API文档")
+    print(f"访问 http://localhost:{port} 查看API文档")
     print("=" * 60)
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host=host, port=port, debug=debug)

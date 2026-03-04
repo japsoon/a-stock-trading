@@ -2,7 +2,7 @@
  * API服务 - 与后端通信
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:5000';
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:5001').replace(/\/+$/, '');
 
 export interface StockRealtime {
   code: string;
@@ -22,6 +22,8 @@ export interface StockComprehensive {
   code: string;
   realtime: StockRealtime;
   daily_count: number;
+  daily?: any;
+  raw_data?: any;
   indicators?: any;
   money_flow?: any;
   fundamental?: any;
@@ -98,7 +100,7 @@ class StockAPI {
   private baseURL: string;
 
   constructor(baseURL: string = API_BASE_URL) {
-    this.baseURL = baseURL;
+    this.baseURL = this.normalizeBaseURL(baseURL);
   }
 
   getBaseURL() {
@@ -106,7 +108,11 @@ class StockAPI {
   }
 
   setBaseURL(url: string) {
-    this.baseURL = url;
+    this.baseURL = this.normalizeBaseURL(url);
+  }
+
+  private normalizeBaseURL(url: string) {
+    return (url || API_BASE_URL).trim().replace(/\/+$/, '');
   }
 
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -333,4 +339,3 @@ class StockAPI {
 }
 
 export const stockAPI = new StockAPI();
-

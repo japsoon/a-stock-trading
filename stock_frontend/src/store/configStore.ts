@@ -3,6 +3,7 @@
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { API_BASE_URL } from '../services/api';
 
 interface ConfigState {
   apiBaseURL: string;
@@ -24,7 +25,7 @@ interface ConfigState {
 export const useConfigStore = create<ConfigState>()(
   persist(
     (set) => ({
-      apiBaseURL: 'http://127.0.0.1:5000',
+      apiBaseURL: API_BASE_URL,
       openaiApiKey: '',
       deepseekApiKey: '',
       qwenApiKey: '',
@@ -44,4 +45,3 @@ export const useConfigStore = create<ConfigState>()(
     }
   )
 );
-

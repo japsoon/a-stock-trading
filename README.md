@@ -111,7 +111,7 @@ pip install -r requirements.txt
 # 启动服务
 python api_server.py
 ```
-*后端默认运行在 `http://localhost:5000`*
+*后端默认运行在 `http://localhost:5001`*
 
 ### 2. 前端部署 (React + Vite)
 ```bash

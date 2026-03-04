@@ -25,7 +25,7 @@ export default function CandlestickChart({ code, buyZones, sellZones, indicators
   const { data: dailyKlineData } = useQuery({
     queryKey: ['daily-kline', code],
     queryFn: async () => {
-      const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:5000';
+      const apiUrl = stockAPI.getBaseURL();
       const response = await fetch(`${apiUrl}/api/sina/daily/${code}?count=240`);
       if (!response.ok) {
         throw new Error('Failed to fetch daily K-line data');
@@ -53,7 +53,7 @@ export default function CandlestickChart({ code, buyZones, sellZones, indicators
   const { data: minute1KlineData } = useQuery({
     queryKey: ['minute1-kline', code],
     queryFn: async () => {
-      const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:5000';
+      const apiUrl = stockAPI.getBaseURL();
       const response = await fetch(`${apiUrl}/api/sina/timeline/${code}`);
       if (!response.ok) {
         throw new Error('Failed to fetch timeline data');
@@ -108,7 +108,7 @@ export default function CandlestickChart({ code, buyZones, sellZones, indicators
   const { data: minute5KlineData } = useQuery({
     queryKey: ['minute5-kline', code],
     queryFn: async () => {
-      const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:5000';
+      const apiUrl = stockAPI.getBaseURL();
       const response = await fetch(`${apiUrl}/api/sina/minute/${code}?scale=5&datalen=240`);
       if (!response.ok) {
         throw new Error('Failed to fetch 5-minute K-line data');
@@ -137,7 +137,7 @@ export default function CandlestickChart({ code, buyZones, sellZones, indicators
   const { data: minute30KlineData } = useQuery({
     queryKey: ['minute30-kline', code],
     queryFn: async () => {
-      const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:5000';
+      const apiUrl = stockAPI.getBaseURL();
       const response = await fetch(`${apiUrl}/api/sina/minute/${code}?scale=30&datalen=240`);
       if (!response.ok) {
         throw new Error('Failed to fetch 30-minute K-line data');
@@ -328,7 +328,7 @@ export default function CandlestickChart({ code, buyZones, sellZones, indicators
 
     if (formattedData.length > 0 && candlestickSeries) {
       try {
-        candlestickSeries.setData(formattedData);
+        candlestickSeries.setData(formattedData as any);
         console.log(`成功加载 ${formattedData.length} 条K线数据`, formattedData.slice(0, 3));
       } catch (error) {
         console.error('设置K线数据失败:', error, formattedData.slice(0, 3));
@@ -399,19 +399,6 @@ export default function CandlestickChart({ code, buyZones, sellZones, indicators
             console.log(`成功添加${title}均线，共${maData.length}条数据`);
           } catch (error) {
             console.error(`添加${title}均线失败:`, error, maData.slice(0, 3));
-            // 如果addLineSeries失败，尝试使用addSeries
-            try {
-              const maSeries = chart.addSeries('Line', {
-                color: color,
-                lineWidth: 2,
-                title: title,
-              }) as ISeriesApi<'Line'>;
-              maSeries.setData(maData);
-              maSeriesRef.current.set(key, maSeries);
-              console.log(`使用addSeries成功添加${title}均线`);
-            } catch (e2) {
-              console.error(`使用addSeries也失败:`, e2);
-            }
           }
         }
       });
@@ -501,10 +488,10 @@ export default function CandlestickChart({ code, buyZones, sellZones, indicators
     }
 
     // 添加买入卖出价格线
-    if (buyZones && chart) {
+    if (buyZones && candlestickSeries) {
       buyZones.forEach((zone) => {
         try {
-          chart.createPriceLine({
+          candlestickSeries.createPriceLine({
             price: zone.price,
             color: '#10b981',
             lineWidth: 2,
@@ -518,10 +505,10 @@ export default function CandlestickChart({ code, buyZones, sellZones, indicators
       });
     }
 
-    if (sellZones && chart) {
+    if (sellZones && candlestickSeries) {
       sellZones.forEach((zone) => {
         try {
-          chart.createPriceLine({
+          candlestickSeries.createPriceLine({
             price: zone.price,
             color: '#ef4444',
             lineWidth: 2,
@@ -675,4 +662,3 @@ export default function CandlestickChart({ code, buyZones, sellZones, indicators
     </div>
   );
 }
-

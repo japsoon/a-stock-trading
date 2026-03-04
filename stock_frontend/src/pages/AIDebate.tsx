@@ -25,9 +25,10 @@ export default function AIDebate() {
     queryKey: ['ai-debate-status', jobId],
     queryFn: () => stockAPI.getDebateJobStatus(jobId),
     enabled: !!jobId,
-    refetchInterval: (data) => {
-      if (!data) return 2000;
-      return data.status === 'completed' || data.status === 'failed' ? false : 2000;
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (!status) return 2000;
+      return status === 'completed' || status === 'failed' ? false : 2000;
     },
   });
 
@@ -371,4 +372,3 @@ export default function AIDebate() {
     </div>
   );
 }
-
