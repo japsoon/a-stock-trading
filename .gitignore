@@ -68,6 +68,7 @@ database.db
 # Logs
 *.log
 logs/
+.run_logs/
 
 # Test files
 test/
