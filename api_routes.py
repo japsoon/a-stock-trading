@@ -1880,7 +1880,7 @@ def register_routes(app):
             t_down_codes = set()
             try:
                 import akshare as ak
-                t_down_df = ak.stock_dt_pool_em(date=t_date.strftime('%Y%m%d'))
+                t_down_df = ak.stock_zt_pool_dtgc_em(date=t_date.strftime('%Y%m%d'))
                 if t_down_df is not None and len(t_down_df) > 0 and '代码' in t_down_df.columns:
                     t_down_codes = set(t_down_df['代码'].astype(str).str.zfill(6).tolist())
                 print(f"[API] T日跌停股票数: {len(t_down_codes)}")

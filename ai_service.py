@@ -24,7 +24,7 @@ class AIService:
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.7
         }
-        response = requests.post(url, headers=headers, json=data, timeout=120)
+        response = requests.post(url, headers=headers, json=data, timeout=300)
         response.raise_for_status()
         result = response.json()
         return result["choices"][0]["message"]["content"]
@@ -42,7 +42,7 @@ class AIService:
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.7
         }
-        response = requests.post(url, headers=headers, json=data, timeout=120)
+        response = requests.post(url, headers=headers, json=data, timeout=300)
         response.raise_for_status()
         result = response.json()
         return result["choices"][0]["message"]["content"]
@@ -61,7 +61,7 @@ class AIService:
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.7
         }
-        response = requests.post(url, headers=headers, json=data, timeout=120)
+        response = requests.post(url, headers=headers, json=data, timeout=300)
         response.raise_for_status()
         result = response.json()
         return result["choices"][0]["message"]["content"]
@@ -75,7 +75,7 @@ class AIService:
                 "parts": [{"text": prompt}]
             }]
         }
-        response = requests.post(url, json=data, timeout=120)
+        response = requests.post(url, json=data, timeout=300)
         response.raise_for_status()
         result = response.json()
         return result["candidates"][0]["content"]["parts"][0]["text"]
@@ -94,7 +94,7 @@ class AIService:
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.7
         }
-        response = requests.post(url, headers=headers, json=data, timeout=120)
+        response = requests.post(url, headers=headers, json=data, timeout=300)
         response.raise_for_status()
         result = response.json()
         return result["choices"][0]["message"]["content"]
@@ -112,7 +112,7 @@ class AIService:
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.7
         }
-        response = requests.post(url, headers=headers, json=data, timeout=120)
+        response = requests.post(url, headers=headers, json=data, timeout=300)
         response.raise_for_status()
         result = response.json()
         return result["choices"][0]["message"]["content"]
