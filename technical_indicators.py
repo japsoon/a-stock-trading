@@ -97,6 +97,113 @@ def calculate_obv(df):
     return df
 
 
+def check_low_start_strategy(df, macd_type='daily'):
+    """检测低位启动股策略
+    条件：
+    1. 股价 >= MA200 (10月线)
+    2. 股价 >= MA50 (10周线)
+    3. 股价 >= MA600 (10季线)
+    4. 股价 <= MA200 * 1.2
+    5. MA200 > MA400 (10月线上穿20月线，金叉状态)
+    6. MACD DIF > DEA (MACD金叉状态)
+
+    Args:
+        df: K线数据DataFrame
+        macd_type: 'daily' 日MACD 或 'monthly' 月MACD
+
+    Returns:
+        dict: {'passed': bool, 'reason': str}
+    """
+    # 根据MACD类型检查最小数据要求
+    min_periods = 600 if macd_type == 'daily' else 60  # 月MACD需要至少60个月数据
+    min_period_name = '600天' if macd_type == 'daily' else '60个月'
+
+    if df is None or len(df) < min_periods:
+        return {'passed': False, 'reason': f'数据不足{min_period_name}'}
+
+    current_price = df['close'].iloc[-1]
+
+    # 计算所需均线（日K线的MA200=10月线，月K线的MA10=10月线）
+    if macd_type == 'daily':
+        ma200 = df['close'].rolling(window=200, min_periods=1).mean().iloc[-1]
+        ma400 = df['close'].rolling(window=400, min_periods=1).mean().iloc[-1]
+        ma50 = df['close'].rolling(window=50, min_periods=1).mean().iloc[-1]
+        ma600 = df['close'].rolling(window=600, min_periods=1).mean().iloc[-1]
+        ma_label = '日MA'
+    else:
+        # 月K线：10个月≈10月线，20个月≈20月线
+        ma10 = df['close'].rolling(window=10, min_periods=1).mean().iloc[-1]   # 10月线
+        ma20 = df['close'].rolling(window=20, min_periods=1).mean().iloc[-1]   # 20月线
+        # 为了兼容返回格式，映射到对应字段
+        ma200 = ma10  # 10月线
+        ma400 = ma20  # 20月线
+        # 10周线（约2.5月）和10季线在月K线下无法准确计算，使用近似值
+        ma50 = ma10   # 近似10周线
+        ma600 = df['close'].rolling(window=30, min_periods=1).mean().iloc[-1]  # 30季线≈10季线
+        ma_label = '月MA'
+
+    # 计算MACD
+    ema12 = df['close'].ewm(span=12, adjust=False).mean()
+    ema26 = df['close'].ewm(span=26, adjust=False).mean()
+    dif = ema12 - ema26
+    dea = dif.ewm(span=9, adjust=False).mean()
+
+    latest_dif = dif.iloc[-1]
+    latest_dea = dea.iloc[-1]
+
+    # 检查条件
+    if pd.isna(ma200) or pd.isna(ma400) or pd.isna(ma50) or pd.isna(ma600):
+        return {'passed': False, 'reason': '均线数据不完整'}
+
+    # 条件1: 股价 >= 10月线
+    if current_price < ma200:
+        return {'passed': False, 'reason': f'股价{current_price:.2f} < 10月线{ma200:.2f}'}
+
+    # 条件2: 股价 >= 10周线
+    if current_price < ma50:
+        return {'passed': False, 'reason': f'股价{current_price:.2f} < 10周线{ma50:.2f}'}
+
+    # 条件3: 股价 >= 10季线
+    if current_price < ma600:
+        return {'passed': False, 'reason': f'股价{current_price:.2f} < 10季线{ma600:.2f}'}
+
+    # 条件4: 股价 <= 10月线 * 1.2
+    if current_price > ma200 * 1.2:
+        return {'passed': False, 'reason': f'股价{current_price:.2f} > 10月线*1.2 ({ma200*1.2:.2f})'}
+
+    # 条件5: 10月线上穿20月线 (金叉状态)
+    if ma200 <= ma400:
+        return {'passed': False, 'reason': f'10月线({ma200:.2f}) 未上穿20月线({ma400:.2f})'}
+
+    # 条件6: MACD金叉
+    macd_label = '月MACD' if macd_type == 'monthly' else '日MACD'
+    if pd.isna(latest_dif) or pd.isna(latest_dea) or latest_dif <= latest_dea:
+        return {'passed': False, 'reason': f'{macd_label}未金叉 (DIF={latest_dif:.3f}, DEA={latest_dea:.3f})'}
+
+    return {
+        'passed': True,
+        'reason': f'符合条件 ({macd_label}金叉)',
+        'ma200': ma200,
+        'ma400': ma400,
+        'ma50': ma50,
+        'ma600': ma600,
+        'macd_dif': latest_dif,
+        'macd_dea': latest_dea,
+        'macd_type': macd_type
+    }
+
+    return {
+        'passed': True,
+        'reason': '符合条件',
+        'ma200': ma200,
+        'ma400': ma400,
+        'ma50': ma50,
+        'ma600': ma600,
+        'macd_dif': latest_dif,
+        'macd_dea': latest_dea
+    }
+
+
 def calculate_indicators(df, indicators=['MA', 'EMA', 'MACD', 'RSI', 'KDJ', 'BOLL', 'OBV']):
     """批量计算技术指标"""
     if df is None or len(df) == 0:

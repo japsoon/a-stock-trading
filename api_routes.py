@@ -27,7 +27,7 @@ from ai_service import AIService
 
 def register_routes(app):
     """注册所有API路由"""
-    
+
     @app.route('/')
     def index():
         """首页 - API文档"""
@@ -1950,3 +1950,200 @@ def register_routes(app):
             import traceback
             print(f"[API] 错误堆栈: {traceback.format_exc()}")
             return jsonify({'error': '筛选强势股失败', 'message': error_msg}), 500
+
+
+    @app.route('/api/strategy/low_start_stocks')
+    def get_low_start_stocks():
+        """获取低位启动股（均线金叉+MACD金叉策略）
+        参数:
+            macd_type: 'daily' 日MACD 或 'monthly' 月MACD (默认daily)
+        """
+        try:
+            # 获取参数
+            macd_type = request.args.get('macd_type', 'daily')
+            if macd_type not in ['daily', 'monthly']:
+                macd_type = 'daily'
+
+            print(f"[API] 开始筛选低位启动股... MACD类型: {macd_type}")
+
+            from technical_indicators import check_low_start_strategy
+            from data_fetchers import get_realtime_data
+            import time
+            import akshare as ak
+
+            # 使用akshare获取K线数据的函数
+            def get_kline_data(code, period='daily', count=700):
+                """使用akshare获取K线数据
+                Args:
+                    code: 股票代码
+                    period: 'daily' 日K 或 'monthly' 月K
+                    count: 获取数据量
+                """
+                try:
+                    # akshare使用6位数字代码，不需要前缀
+                    # 月K线需要更早的起始日期以获得足够数据
+                    if period == 'monthly':
+                        start_date = "20000101"  # 月K需要更长时间，从2000年开始
+                    else:
+                        start_date = "20180101"
+
+                    df = ak.stock_zh_a_hist(symbol=code, period=period, start_date=start_date, adjust="qfq")
+                    if df is None or len(df) == 0:
+                        return None
+
+                    # 重命名列以匹配标准格式
+                    df = df.rename(columns={
+                        '日期': 'date',
+                        '开盘': 'open',
+                        '收盘': 'close',
+                        '最高': 'high',
+                        '最低': 'low',
+                        '成交量': 'volume',
+                        '成交额': 'amount'
+                    })
+
+                    # 确保日期是datetime类型
+                    if 'date' in df.columns:
+                        df['date'] = pd.to_datetime(df['date'])
+
+                    # 按日期排序并取最后count条
+                    df = df.sort_values('date').tail(count).reset_index(drop=True)
+
+                    # 确保数值列是数字类型
+                    for col in ['open', 'high', 'low', 'close', 'volume']:
+                        if col in df.columns:
+                            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+                    return df
+                except Exception as e:
+                    print(f"[API] akshare获取K线失败 {code}: {e}")
+                    return None
+
+            # 获取股票池 - 从今日涨停板或全市场筛选
+            def get_stock_pool():
+                """获取股票池"""
+                try:
+                    today = datetime.now().strftime('%Y%m%d')
+
+                    # 获取今日涨停股票作为候选池
+                    limit_up_df = ak.stock_zt_pool_em(date=today)
+                    if limit_up_df is not None and len(limit_up_df) > 0:
+                        codes = []
+                        for idx, row in limit_up_df.iterrows():
+                            code = None
+                            for code_field in ['代码', '股票代码', 'code']:
+                                if code_field in row and pd.notna(row[code_field]):
+                                    code_str = str(row[code_field]).strip()
+                                    if code_str.isdigit() and len(code_str) == 6:
+                                        code = code_str
+                                        break
+                                    elif code_str.isdigit():
+                                        code = code_str.zfill(6)
+                                        break
+                            if code:
+                                codes.append(code)
+                        return codes[:100]  # 限制检查数量避免超时
+                except Exception as e:
+                    print(f"[API] 获取涨停股票池失败: {e}")
+
+                # 备选：返回一些常见股票代码进行测试
+                return []
+
+            stock_codes = get_stock_pool()
+            print(f"[API] 候选股票池数量: {len(stock_codes)}")
+
+            if not stock_codes:
+                return jsonify({
+                    'strategy': 'low_start_stocks',
+                    'description': '低位启动股：10月线上穿20月线+MACD金叉，股价在合理区间',
+                    'params': {},
+                    'count': 0,
+                    'stocks': [],
+                    'message': '未能获取股票池数据'
+                })
+
+            results = []
+            checked = 0
+            skipped_data = 0
+
+            # 根据MACD类型设置参数
+            if macd_type == 'monthly':
+                min_data_count = 60  # 月K线需要至少60个月
+                kline_count = 200
+                period = 'monthly'
+            else:
+                min_data_count = 600  # 日K线需要至少600天
+                kline_count = 700
+                period = 'daily'
+
+            for code in stock_codes:
+                try:
+                    checked += 1
+                    if checked % 10 == 0:
+                        print(f"[API] 已检查 {checked}/{len(stock_codes)} 只股票...")
+
+                    # 获取K线数据
+                    kline_df = get_kline_data(code, period=period, count=kline_count)
+
+                    if kline_df is None or len(kline_df) < min_data_count:
+                        skipped_data += 1
+                        continue
+
+                    # 转换为正确的列名
+                    if 'close' not in kline_df.columns:
+                        continue
+
+                    # 执行策略检查（传入MACD类型）
+                    check_result = check_low_start_strategy(kline_df, macd_type=macd_type)
+
+                    if check_result['passed']:
+                        # 获取实时行情
+                        realtime = get_realtime_data(code)
+
+                        stock_info = {
+                            'code': code,
+                            'name': realtime.get('name', '') if realtime else '',
+                            'current_price': realtime.get('current_price') if realtime else None,
+                            'change_percent': realtime.get('change_percent') if realtime else None,
+                            'volume': realtime.get('volume') if realtime else None,
+                            'amount': realtime.get('amount') if realtime else None,
+                            'ma200': check_result.get('ma200'),
+                            'ma400': check_result.get('ma400'),
+                            'ma50': check_result.get('ma50'),
+                            'ma600': check_result.get('ma600'),
+                            'macd_dif': check_result.get('macd_dif'),
+                            'macd_dea': check_result.get('macd_dea'),
+                            'reason': check_result['reason'],
+                            'macd_type': macd_type
+                        }
+                        results.append(stock_info)
+
+                        print(f"[API] OK {code} 符合条件: {check_result['reason']}")
+
+                    # 添加延迟避免请求过快
+                    time.sleep(0.1)
+
+                except Exception as e:
+                    print(f"[API] 检查 {code} 失败: {e}")
+                    continue
+
+            print(f"[API] 低位启动股筛选完成，共检查 {checked} 只，数据不足跳过 {skipped_data} 只，符合条件 {len(results)} 只")
+
+            macd_label = '月MACD' if macd_type == 'monthly' else '日MACD'
+            return jsonify({
+                'strategy': 'low_start_stocks',
+                'description': f'低位启动股：10月线上穿20月线+{macd_label}金叉，股价在合理区间',
+                'params': {
+                    'macd_type': macd_type,
+                    'macd_label': macd_label
+                },
+                'count': len(results),
+                'stocks': results
+            })
+
+        except Exception as e:
+            error_msg = str(e)
+            print(f"[API] 筛选低位启动股失败: {error_msg}")
+            import traceback
+            print(f"[API] 错误堆栈: {traceback.format_exc()}")
+            return jsonify({'error': '筛选低位启动股失败', 'message': error_msg}), 500
