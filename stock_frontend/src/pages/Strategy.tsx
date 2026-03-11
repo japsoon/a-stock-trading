@@ -33,13 +33,40 @@ interface StrongStocksResponse {
   stocks: StrongStock[];
 }
 
+interface LowStartStock {
+  code: string;
+  name: string;
+  current_price: number | null;
+  change_percent: number | null;
+  volume: number | null;
+  amount: number | null;
+  ma200: number;
+  ma400: number;
+  ma50: number;
+  ma600: number;
+  macd_dif: number;
+  macd_dea: number;
+  reason: string;
+}
+
+interface LowStartStocksResponse {
+  strategy: string;
+  description: string;
+  params: {};
+  count: number;
+  stocks: LowStartStock[];
+  message?: string;
+}
+
 const TIME_OPTIONS = [
   '09:30', '09:45', '10:00', '10:15', '10:30', '10:45',
   '11:00', '11:15', '11:30', '13:00', '13:30', '14:00', '14:30', '15:00'
 ];
 
 export default function Strategy() {
+  const [activeTab, setActiveTab] = useState<'strong' | 'lowstart'>('strong');
   const [limitTime, setLimitTime] = useState('11:30');
+  const [macdType, setMacdType] = useState<'daily' | 'monthly'>('daily');
   const [selectedCodes, setSelectedCodes] = useState<string[]>([]);
   const [showMultiModal, setShowMultiModal] = useState(false);
   const [selectedAgentIds, setSelectedAgentIds] = useState<number[]>([]);
@@ -49,11 +76,24 @@ export default function Strategy() {
   const [addedMap, setAddedMap] = useState<Record<string, boolean>>({});
   const navigate = useNavigate();
 
-  const { data, isLoading, error, refetch, isFetching } = useQuery<StrongStocksResponse>({
+  // 同时加载两个策略的数据，不使用enabled限制
+  const { data: strongData, isLoading: strongLoading, error: strongError, refetch: strongRefetch, isFetching: strongFetching } = useQuery<StrongStocksResponse>({
     queryKey: ['strong-stocks', limitTime],
     queryFn: () => stockAPI.getStrongStocks(limitTime),
-    refetchInterval: 60000, // 每分钟刷新一次
+    refetchInterval: 60000,
   });
+
+  const { data: lowStartData, isLoading: lowStartLoading, error: lowStartError, refetch: lowStartRefetch, isFetching: lowStartFetching } = useQuery<LowStartStocksResponse>({
+    queryKey: ['lowstart-stocks', macdType],
+    queryFn: () => stockAPI.getLowStartStocks(macdType),
+    refetchInterval: 60000,
+  });
+
+  const currentData = activeTab === 'strong' ? strongData : lowStartData;
+  const currentLoading = activeTab === 'strong' ? strongLoading : lowStartLoading;
+  const currentError = activeTab === 'strong' ? strongError : lowStartError;
+  const currentRefetch = activeTab === 'strong' ? strongRefetch : lowStartRefetch;
+  const currentFetching = activeTab === 'strong' ? strongFetching : lowStartFetching;
 
   const { data: agents, isLoading: agentsLoading } = useQuery({
     queryKey: ['agents', 'enabled'],
@@ -154,27 +194,32 @@ export default function Strategy() {
 
   return (
     <div className="px-4 sm:px-6 lg:px-8">
-      {/* 策略卡片 - 始终显示 */}
+      {/* 策略卡片 - 点击卡片切换 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         {/* 强势股策略 */}
-        <div className="bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl p-6 text-white shadow-lg">
+        <div
+          onClick={() => setActiveTab('strong')}
+          className={`bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl p-6 text-white shadow-lg cursor-pointer transition-all ${
+            activeTab === 'strong' ? 'ring-4 ring-blue-300 scale-105' : 'opacity-70 hover:opacity-90'
+          }`}
+        >
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold">强势股策略</h2>
-            {isLoading ? (
+            {strongLoading ? (
               <div className="text-right">
                 <div className="h-10 w-16 bg-blue-400/50 rounded animate-pulse"></div>
                 <div className="text-sm text-blue-100 mt-1">加载中...</div>
               </div>
             ) : (
               <div className="text-right">
-                <div className="text-4xl font-bold">{data?.count || 0}</div>
+                <div className="text-4xl font-bold">{strongData?.count || 0}</div>
                 <div className="text-sm text-blue-100">符合条件</div>
               </div>
             )}
           </div>
-          
+
           {/* 参数设置 */}
-          <div className="mb-4 p-3 bg-blue-600/50 rounded-lg">
+          <div onClick={(e) => e.stopPropagation()} className="mb-4 p-3 bg-blue-600/50 rounded-lg">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm text-blue-100 mb-1">涨停截止时间</div>
@@ -193,30 +238,66 @@ export default function Strategy() {
               </select>
             </div>
           </div>
-          
-          {isLoading ? (
+
+          {strongLoading ? (
             <div className="space-y-2">
               <div className="h-4 w-32 bg-blue-400/50 rounded animate-pulse"></div>
               <div className="h-4 w-36 bg-blue-400/50 rounded animate-pulse"></div>
               <div className="h-4 w-36 bg-blue-400/50 rounded animate-pulse"></div>
             </div>
-          ) : data?.trade_dates ? (
+          ) : strongData?.trade_dates ? (
             <div className="space-y-1 text-sm text-blue-100">
-              <div>T 日: {data.trade_dates.T}</div>
-              <div>T-1日: {data.trade_dates['T-1']}</div>
-              <div>T-2日: {data.trade_dates['T-2']}</div>
+              <div>T 日: {strongData.trade_dates.T}</div>
+              <div>T-1日: {strongData.trade_dates['T-1']}</div>
+              <div>T-2日: {strongData.trade_dates['T-2']}</div>
             </div>
           ) : null}
         </div>
 
-        {/* 其他策略待开发 */}
-        <div className="bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 rounded-xl p-6 shadow-lg flex items-center justify-center">
-          <div className="text-center">
-            <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            <h3 className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">其他策略</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">正在开发中...</p>
+        {/* 低位启动股策略 */}
+        <div
+          onClick={() => setActiveTab('lowstart')}
+          className={`bg-gradient-to-br from-purple-500 to-purple-700 rounded-xl p-6 text-white shadow-lg cursor-pointer transition-all ${
+            activeTab === 'lowstart' ? 'ring-4 ring-purple-300 scale-105' : 'opacity-70 hover:opacity-90'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-bold">低位启动股策略</h2>
+            {lowStartLoading ? (
+              <div className="text-right">
+                <div className="h-10 w-16 bg-purple-400/50 rounded animate-pulse"></div>
+                <div className="text-sm text-purple-100 mt-1">加载中...</div>
+              </div>
+            ) : (
+              <div className="text-right">
+                <div className="text-4xl font-bold">{lowStartData?.count || 0}</div>
+                <div className="text-sm text-purple-100">符合条件</div>
+              </div>
+            )}
+          </div>
+
+          {/* 参数设置 - MACD类型选择 */}
+          <div onClick={(e) => e.stopPropagation()} className="mb-4 p-3 bg-purple-600/50 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm text-purple-100 mb-1">MACD类型</div>
+                <div className="text-xs text-purple-200">日MACD更敏感，月MACD更稳定</div>
+              </div>
+              <select
+                value={macdType}
+                onChange={(e) => setMacdType(e.target.value as 'daily' | 'monthly')}
+                className="px-3 py-2 text-sm bg-white/20 border border-purple-400/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-300"
+              >
+                <option value="daily" className="text-gray-900">日MACD</option>
+                <option value="monthly" className="text-gray-900">月MACD</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-2 text-sm text-purple-100">
+            <div>• 股价在10月线~10月线×1.2之间</div>
+            <div>• 10月线上穿20月线 (金叉)</div>
+            <div>• {macdType === 'monthly' ? '月MACD' : '日MACD'}金叉</div>
           </div>
         </div>
       </div>
@@ -233,7 +314,9 @@ export default function Strategy() {
 
       {/* 筛选结果标题和刷新按钮 - 始终显示 */}
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">筛选结果</h2>
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+          筛筛选结果 - {activeTab === 'strong' ? '强势股策略' : '低位启动股策略'}
+        </h2>
         <div className="flex items-center gap-3">
           {selectedCodes.length >= 2 && (
             <button
@@ -244,38 +327,38 @@ export default function Strategy() {
             </button>
           )}
           <button
-            onClick={() => refetch()}
-            disabled={isFetching}
+            onClick={() => currentRefetch()}
+            disabled={currentFetching}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <svg className={`h-5 w-5 ${isFetching ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className={`h-5 w-5 ${currentFetching ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            {isFetching ? '刷新中...' : '刷新数据'}
+            {currentFetching ? '刷新中...' : '刷新数据'}
           </button>
         </div>
       </div>
 
       {/* 股票列表 - 根据状态渲染 */}
-      {isLoading ? (
+      {currentLoading ? (
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-12">
           <div className="flex flex-col items-center justify-center">
             <LoadingSpinner size="large" />
             <p className="mt-4 text-gray-500 dark:text-gray-400">正在加载数据...</p>
           </div>
         </div>
-      ) : error ? (
+      ) : currentError ? (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
           <h3 className="text-red-800 dark:text-red-300 font-medium">加载数据失败</h3>
-          <p className="text-red-600 dark:text-red-400 text-sm mt-1">{String(error)}</p>
+          <p className="text-red-600 dark:text-red-400 text-sm mt-1">{String(currentError)}</p>
           <button
-            onClick={() => refetch()}
+            onClick={() => currentRefetch()}
             className="mt-3 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
           >
             重试
           </button>
         </div>
-      ) : !data || data.stocks.length === 0 ? (
+      ) : !currentData || currentData.stocks.length === 0 ? (
         <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
           <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -288,46 +371,32 @@ export default function Strategy() {
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead className="bg-gray-50 dark:bg-gray-900">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    勾选
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    代码
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    名称
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    行业
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    T-1涨停
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    T-2涨停
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    连板
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    炸板
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    当前价
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    涨跌幅
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    成交量
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    操作
-                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">勾选</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">代码</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">名称</th>
+                  {activeTab === 'strong' ? (
+                    <>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">行业</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">T-1涨停</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">T-2涨停</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">连板</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">炸板</th>
+                    </>
+                  ) : (
+                    <>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">10月线</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">20月线</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">MACD金叉</th>
+                    </>
+                  )}
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">当前价</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">涨跌幅</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">成交量</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">操作</th>
                 </tr>
               </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                {data.stocks.map((stock) => (
+                {currentData.stocks.map((stock: any) => (
                   <tr key={stock.code} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                     <td className="px-4 py-4 whitespace-nowrap text-sm">
                       <input
@@ -343,29 +412,47 @@ export default function Strategy() {
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                       {stock.name}
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                      {stock.industry || '-'}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                      {formatLimitTime(stock.t1_limit_time)}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                      {formatLimitTime(stock.t2_limit_time)}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm">
-                      {stock.consecutive_days > 0 ? (
-                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
-                          {stock.consecutive_days}连板
-                        </span>
-                      ) : '-'}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                      {stock.break_count > 0 ? (
-                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
-                          {stock.break_count}次
-                        </span>
-                      ) : '-'}
-                    </td>
+                    {activeTab === 'strong' ? (
+                      <>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                          {stock.industry || '-'}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                          {formatLimitTime(stock.t1_limit_time)}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                          {formatLimitTime(stock.t2_limit_time)}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm">
+                          {stock.consecutive_days > 0 ? (
+                            <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
+                              {stock.consecutive_days}连板
+                            </span>
+                          ) : '-'}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                          {stock.break_count > 0 ? (
+                            <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
+                              {stock.break_count}次
+                            </span>
+                          ) : '-'}
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                          {stock.ma200?.toFixed(2) || '-'}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                          {stock.ma400?.toFixed(2) || '-'}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm">
+                          <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                            ✓
+                          </span>
+                        </td>
+                      </>
+                    )}
                     <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                       {stock.current_price ? `¥${stock.current_price.toFixed(2)}` : '-'}
                     </td>

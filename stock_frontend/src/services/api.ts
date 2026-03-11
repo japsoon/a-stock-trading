@@ -305,6 +305,10 @@ class StockAPI {
     return this.request(`/api/strategy/strong_stocks?limit_time=${encodeURIComponent(limitTime)}`);
   }
 
+  async getLowStartStocks(macdType: 'daily' | 'monthly' = 'daily'): Promise<any> {
+    return this.request(`/api/strategy/low_start_stocks?macd_type=${macdType}`);
+  }
+
   async stopDebateJob(jobId: string): Promise<boolean> {
     const data = await this.request<{ success: boolean }>(`/api/ai/debate/stop/${jobId}`, {
       method: 'POST',
